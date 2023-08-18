@@ -1,11 +1,14 @@
-
-#define BLYNK_TEMPLATE_ID "TdadMdqPL32v2fRS4dlnEg39fd"
+#define BLYNK_TEMPLATE_ID "TMPL2vRSlnEg9"
 #define BLYNK_TEMPLATE_NAME "UNO ESP8266"
-#define BLYNK_AUTH_TOKEN "7a23aT23MPrM4dq94_IdUfX259b3P5h7kuf6WSqbdqOSdC"
-
-/* Comment this out to disable prints and save space */
-
+#define BLYNK_AUTH_TOKEN "73T2MPrMq94_IUX29b3Ph7kuWSqbqOSC"
 #define BLYNK_PRINT Serial
+
+
+// look at esplib
+// reboot
+// kick
+// 
+
 #include <Arduino.h>
 #include <SPI.h>
 #include <SoftwareSerial.h>
@@ -16,19 +19,20 @@
 #include <arduino-timer.h>
 #include <avr/wdt.h>
 
-// Your WiFi credentials.
-// Set password to "" for open networks.
+
+//Original_Blynk_Begin
 char ssid[] = "WIFI1";
 char pass[] = "00000000000000000000";
 
+// Custom_Blynk_Begin
+const char* ssid_list[] = {"WIFI1","WIFI2","WIFI3"};                                                   // WIFI LIST
+const char* pass_list[] = {"00000000000000000000","00000000000000000000","00000000000000000000"};      // Password List
 
-//ESP_WROOM_02_IO_13_RX connects to UNO_PIN9_TX (38400bps SW_Serial)
-//ESP_WROOM_02_IO_15_TX connects to UNO_PIN8_RX (38400bps SW_Serial)
-SoftwareSerial EspSerial(8, 9);  // RX, TX
-#define ESP8266_BAUD 38400                    // ESP WROOM-02 SW BAUDRATE
+
+SoftwareSerial EspSerial(8, 9);  // RX, TX   ESP_WROOM_02_IO_13_RX connects to UNO_PIN9_TX (38400bps SW_Serial)
+#define ESP8266_BAUD 38400       //          ESP_WROOM_02_IO_15_TX connects to UNO_PIN8_RX (38400bps SW_Serial)
 
 ESP8266 wifi(&EspSerial);
-
 
 //  TYPE K THERMO COUPLE
 MAX_31855 SPI_Thermo_Couple(SCK, SS, MISO, MOSI);
@@ -62,6 +66,8 @@ BLYNK_WRITE(V0)
 
 
 
+
+
 //====================================================
 //     UPDATE ALL VIRTUAL PINS STATES WHEN CONNECTED
 //====================================================
@@ -71,6 +77,13 @@ BLYNK_CONNECTED()
 }
 
 
+void Reboot_Arduino()
+{
+    wdt_disable();
+    wdt_enable(WDTO_15MS);
+    while (1) {}
+}
+
 //==========================================
 //     DEBUG TO CAPTURE A REBOOT COMMAND
 //==========================================
@@ -79,9 +92,7 @@ BLYNK_WRITE(InternalPinDBG)
     if (String(param.asStr()) == "reboot") 
     {
         Serial.println("Reboot CMD Received From Server...");
-        wdt_disable();
-        wdt_enable(WDTO_15MS);
-        while (1) {}
+        Reboot_Arduino();
     }
 }
 
@@ -116,7 +127,7 @@ void Read_TC_Data()
 //===================================
 bool Upload_Blynk_Data(void *)
 {
-    if (TC_Fault == false)
+    if ((TC_Fault == false) && (Blynk.connected() == true ))
     {
         Blynk.virtualWrite(V1, TC_Temp);     // Update  Graph
         Serial.println("Blynk Data Posted...");
@@ -131,10 +142,42 @@ bool Upload_Blynk_Data(void *)
 //============================
 void INIT_Timers()
 {
-     Timer1.initialize(1000000);                   // 1 second
+     Timer1.initialize(2000000);                   // 1 second
      Timer1.attachInterrupt(Read_TC_Data);      // capture data ever 1s
      Timer_Post_Blynk_Data.every(2000000, Upload_Blynk_Data);
 }
+
+
+
+//=========================================================================
+//               CUSTOM BLYNK 2.0 BEGIN TO FIND LOCAL ACCESS POINTS
+//=========================================================================
+void Custom_Blynk_Begin(const char*  _auth,
+                        ESP8266&     _esp8266,
+                        const char*  _domain = BLYNK_DEFAULT_DOMAIN,
+                        uint16_t     _port   = BLYNK_DEFAULT_PORT)
+
+{
+	int ssid_index=0;
+	int ssid_list_size = sizeof(ssid_list) / sizeof(ssid_list[0]);         // calculate number of entries in SSID list (3)
+	Blynk.config(_esp8266, _auth, _domain, _port);
+	do 
+    {	
+        if (Blynk.connectWiFi(ssid_list[ssid_index], pass_list[ssid_index])) 
+		{
+			Serial.println("CONNECTED TO : " + String(ssid_list[ssid_index]));
+        }
+        else
+        {
+           Serial.println("Could Not Connect To: "+ String(ssid_list[ssid_index]));
+           ssid_index++; 
+        }
+        
+        if ((ssid_index+1) >= ssid_list_size) {ssid_index  = 0;}          // loop infinitely until connected.
+    }
+    while ((Blynk.connect() == false));
+}
+
 
 
 
@@ -145,14 +188,14 @@ void setup()
 {
     pinMode(8, INPUT);
     pinMode(9, OUTPUT);
-    Serial.begin(57600);     // Debug console
+    Serial.begin(57600);                                                 // Debug console
     Serial.println("System Booting...");
     SPI.begin();
-    EspSerial.begin(ESP8266_BAUD);   // Set ESP8266 baud rate
+    EspSerial.begin(ESP8266_BAUD);                                       // Set ESP8266 baud rate
     delay(10);
-    INIT_Timers();
+    INIT_Timers();                                                       // Start Running NON Bynk Arduino Code
     Serial.println("Starting Blynk...");
-    Blynk.begin(BLYNK_AUTH_TOKEN, wifi, ssid, pass, "blynk.cloud", 80);           // Blynk 2.0    
+    Custom_Blynk_Begin(BLYNK_AUTH_TOKEN, wifi, "blynk.cloud", 80);       // Blynk.begin(BLYNK_AUTH_TOKEN, wifi, ssid, pass, "blynk.cloud", 80); 
 }
 
 
@@ -160,8 +203,19 @@ void setup()
 //====================
 //     MAIN LOOP
 //====================
+int Blynk_Fail_Count = 0;
 void loop()
 {
-    Blynk.run();
-    Timer_Post_Blynk_Data.tick();
+    if (Blynk.run() == false)              // Falls through every 5 seconds when failing
+    {
+        Blynk_Fail_Count++;
+        Serial.print("Blynk_Fail_Count: "); Serial.println(Blynk_Fail_Count);
+    };
+    
+    if (Blynk_Fail_Count >= 30)           // restart everybody
+    {
+        wifi.restart();
+        Reboot_Arduino();
+    }
+    Timer_Post_Blynk_Data.tick();            // will only upload if Blynk.Connected == True;
 }
